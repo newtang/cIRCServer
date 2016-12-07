@@ -52,20 +52,26 @@ int main (){
 	struct sockaddr_storage their_addr;
     socklen_t addr_size = sizeof their_addr;
     while(1){
+
 	    int new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &addr_size);
 	    if (new_fd == -1) {
             perror("accept");
             continue;
         }
-	    
+
         inet_ntop(their_addr.ss_family,
         	get_in_addr((struct sockaddr *)&their_addr), s, sizeof s);
         printf("server: got connection from %s\n", s);
 
-        
 
-        
+        /**
+          * This forks the program. It's essentially duplicated. Weirdly, this method essentially returns twice, one 
+          to its self, and one to it's child.  The child gets a return of '0' (so it enters this if statement)
+          and the original gets the pid of the child, so it loops again, and blocks on accept!
+
+        **/
 	    if (!fork()) { // this is the child process
+
             close(sockfd); // child doesn't need the listener
 
             char *msg = "Hello There!";
@@ -73,11 +79,17 @@ int main (){
 
             if (send(new_fd, msg, len, 0) == -1)
                 perror("send");
+            
+            int bufLen = 200;
+            char buf[bufLen];
+            while(recv(new_fd, buf, bufLen, 0)){
+            	printf("%s", buf);
+            	memset(buf, 0, bufLen);
+            }
+
             close(new_fd);
             return 0;
         }
-        
-
 
         close(new_fd);  // parent doesn't need this
 	}
