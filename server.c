@@ -53,6 +53,7 @@ int main (){
     socklen_t addr_size = sizeof their_addr;
     while(1){
 
+    	//accept blocks
 	    int new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &addr_size);
 	    if (new_fd == -1) {
             perror("accept");
@@ -70,6 +71,7 @@ int main (){
           and the original gets the pid of the child, so it loops again, and blocks on accept!
 
         **/
+
 	    if (!fork()) { // this is the child process
 
             close(sockfd); // child doesn't need the listener
@@ -82,11 +84,12 @@ int main (){
             
             int bufLen = 200;
             char buf[bufLen];
+            
             while(recv(new_fd, buf, bufLen, 0)){
             	printf("%s", buf);
             	memset(buf, 0, bufLen);
             }
-
+            
             close(new_fd);
             return 0;
         }
