@@ -4,11 +4,18 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <stdlib.h>
+
+
+//client join a server
+//client join a room
+
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
@@ -20,6 +27,38 @@ void *get_in_addr(struct sockaddr *sa)
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
+typedef struct {
+    char pass[10];
+    char name[10];
+    char userstr[50];
+} user_t;
+
+user_t users[10];
+
+//char* parseCommand(char *str, char *args){
+char *parseCommand(char *str){
+    char *command;
+
+    int i =0;
+    int len = strlen(str);
+
+    while(i<len){
+        if(str[i] == ' '){
+            break;
+        }        
+        ++i;
+    }
+
+    command=(char*)malloc(sizeof(char) * (i+1));
+    
+    strncpy(command, str, i+1);
+
+    //strncpy(args, str+i, len);
+
+    return (char *)command;
+
+}
+
 int main (){
 
 	int status;
@@ -27,7 +66,7 @@ int main (){
 	struct addrinfo *res;  // will point to the results
 	char remoteIP[INET6_ADDRSTRLEN];
 
-	 struct sockaddr_storage remoteaddr; // client address
+	struct sockaddr_storage remoteaddr; // client address
 
 	fd_set master;    // master file descriptor list
     fd_set read_fds;  // temp file descriptor list for select()
@@ -47,6 +86,14 @@ int main (){
 	}
 
 	int listener = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    printf("listener %d\n", listener);
+
+    int yes=1;
+    // lose the pesky "Address already in use" error message
+    if (setsockopt(listener,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof yes) == -1) {
+        perror("setsockopt");
+        exit(1);
+    } 
 
 
 	// bind it to the port we passed in to getaddrinfo():
@@ -78,6 +125,7 @@ int main (){
         }
 
         for(int i = 0; i <= fdmax; i++) {
+
             if (FD_ISSET(i, &read_fds)) { // we got one!!
                 if (i == listener) {
                 	int new_fd = accept(listener, (struct sockaddr *)&their_addr, &addr_size);
@@ -105,6 +153,16 @@ int main (){
                 	 	FD_CLR(i, &master);
                 	 }
                 	 else {
+
+                        char commandArgs[256];
+                        //char* comm = parseCommand(&buf, &commandArgs);
+                        char *comm;
+                        comm = parseCommand(*buf);
+
+
+                        printf("command: %s", comm);
+
+
                 	 	//we received a message!
                 	 	printf("buf: %s", buf);
                 	 	for(int j=0; j<=fdmax; ++j){
@@ -122,3 +180,8 @@ int main (){
 
 	return 0;	
 }
+
+bool validUser(user_t *user){
+    return strlen(user->pass) && strlen (user->name) && strlen (user->userstr);
+}
+
