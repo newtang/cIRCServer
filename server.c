@@ -31,18 +31,36 @@ typedef struct {
     char *name;
     char *userstr;
     bool valid;
+    char *room;
 } user_t;
 
 user_t users[256];
 
-char* parseCommand(char *str, char *args){
+int listener;
+fd_set master;    // master file descriptor list
+fd_set read_fds;  // temp file descriptor list for select()
+int fdmax;        // maximum file descriptor number
+
+bool isspace(char c){
+    return c == ' ' || c == '\n' || c == '\r' || c == '\t';
+}
+
+char* parseCommand(char *str){
     int i =0;
-    
+
+    char *end = str + strlen(str) - 1;
+    while(end > str && isspace((unsigned char)*end)){
+        end--;
+    } 
+    // Write new null terminator
+    *(end+1) = 0;
+
+
     while(str[i] != '\0'){
         if(str[i] == ' '){
             str[i] = '\0';
             return &str[i+1];
-        }        
+        }
         ++i;
     }
 }
@@ -55,6 +73,31 @@ void write_to_user(int user_fd, char* str){
     send(user_fd, str, strlen(str), 0);
 }
 
+char* buildMessage(char *name, char *message){
+
+    char *dest = (char *) malloc(strlen(name) + strlen(message) + 2 );
+    snprintf(dest, 100, "%s%s%s\n", name, "> ", message);
+    return dest;
+}
+
+void write_to_room(int writer_fd, char* room, char* msg){
+
+    printf("write to room |%s|%s|\n", room, users[writer_fd].room);
+
+    if(strcmp(users[writer_fd].room, room) == 0){
+        for(int i=0; i<=fdmax; ++i){
+            if (FD_ISSET(i, &master)){
+                if(i != listener && strcmp(users[i].room, room) == 0){
+                    write_to_user(i, msg);
+                } 
+            }
+        }
+    }
+    else{
+        write_to_user(writer_fd, "You can't write to a room you're not in.\n");
+    }
+}
+
 void handleCommand(char *comm, char *args, int user_fd){
 
     if(!users[user_fd].valid){
@@ -62,28 +105,56 @@ void handleCommand(char *comm, char *args, int user_fd){
         if(strcmp(comm, "PASS") == 0){
             users[user_fd].pass = (char *) malloc(strlen(args));
             strcpy(users[user_fd].pass, args);
-
         }
         else if(strcmp(comm, "NICK") == 0){
-            users[user_fd].name = args;
+            users[user_fd].name = (char *) malloc(strlen(args));
+            strcpy(users[user_fd].name, args);
         }
         else if(strcmp(comm, "USER") == 0){
-            users[user_fd].userstr = args;
+            users[user_fd].userstr = (char *) malloc(strlen(args));
+            strcpy(users[user_fd].userstr, args);
+        }
+        else{
+            write_to_user(user_fd, "Not authenticated yet. Invalid command.");
         }
 
         if(validUser(&users[user_fd])){
             users[user_fd].valid = true;
-            write_to_user(user_fd, "You're valid!");
+            write_to_user(user_fd, "You're authenticated!\n");
             return;
         }
     }
     else{
+        if(strcmp(comm, "JOIN") == 0){
+            users[user_fd].room = (char *) malloc(strlen(args));
+            strcpy(users[user_fd].room, args);
 
+            char *prefix = "You have joined: ";
+            char *dest = (char *) malloc(strlen(args) + strlen(prefix) +1);
+
+            snprintf(dest, 100, "%s%s\n", prefix, args);
+            write_to_user(user_fd, dest);
+            //write_to_user(user_fd, strcat("You have joined a room ", args));
+        }
+        else if(strcmp(comm, "PRIVMSG") == 0){
+            char* msg_args = parseCommand(args);
+            //target (room) is the args
+            //the message is the msg_args
+
+            printf("target %s\n", args);
+            printf("msg_args %s\n", msg_args);
+
+            //assuming target is a room.
+            char* msg = buildMessage(users[user_fd].name, msg_args);
+            printf("msg %s\n", msg);
+            write_to_room(user_fd, args, msg);
+            free(msg);
+
+        }
     }
-
-
-
 }
+
+
 
 int main (){
 
@@ -93,10 +164,6 @@ int main (){
 	char remoteIP[INET6_ADDRSTRLEN];
 
 	struct sockaddr_storage remoteaddr; // client address
-
-	fd_set master;    // master file descriptor list
-    fd_set read_fds;  // temp file descriptor list for select()
-    int fdmax;        // maximum file descriptor number
 
     FD_ZERO(&master);    // clear the master and temp sets
     FD_ZERO(&read_fds);
@@ -111,7 +178,7 @@ int main (){
 	    return 1;
 	}
 
-	int listener = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+	listener = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     printf("listener %d\n", listener);
 
     int yes=1;
@@ -185,29 +252,20 @@ int main (){
 
                 	 if ((nbytes = recv(i, buf, sizeof buf, 0)) <= 0) {
                 	 	FD_CLR(i, &master);
+                        //clear from user table
                 	 }
                 	 else {
 
                         printf("buf: %s", buf);
                         
                         //parseCommand puts a null terminator between the command and arguments
-                        char *commandArgs = parseCommand(buf, commandArgs);
+                        char *commandArgs = parseCommand(buf);
 
                         //we received a message!
                         printf("command: %s\n", buf);
                         printf("command Args: %s\n", commandArgs); 
-
-
                         handleCommand(buf, commandArgs, i);
-
-
-                	 	for(int j=0; j<=fdmax; ++j){
-                	 		if (FD_ISSET(j, &master)){
-	                	 		if(j != listener && j != i){
-	                	 			send(j, buf, nbytes, 0);
-	                	 		}
-	                	 	}
-                	 	}
+                        memset(&buf[0], 0, sizeof(buf));
                 	}
                 }
             }
