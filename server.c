@@ -16,7 +16,6 @@
 //client join a server
 //client join a room
 
-
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
 {
@@ -28,34 +27,61 @@ void *get_in_addr(struct sockaddr *sa)
 }
 
 typedef struct {
-    char pass[10];
-    char name[10];
-    char userstr[50];
+    char *pass;
+    char *name;
+    char *userstr;
+    bool valid;
 } user_t;
 
-user_t users[10];
+user_t users[256];
 
-//char* parseCommand(char *str, char *args){
-char *parseCommand(char *str){
-    char *command;
-
+char* parseCommand(char *str, char *args){
     int i =0;
-    int len = strlen(str);
-
-    while(i<len){
+    
+    while(str[i] != '\0'){
         if(str[i] == ' '){
-            break;
+            str[i] = '\0';
+            return &str[i+1];
         }        
         ++i;
     }
+}
 
-    command=(char*)malloc(sizeof(char) * (i+1));
-    
-    strncpy(command, str, i+1);
+bool validUser(user_t *user){
+    return user->pass != '\0' && user->name != '\0' &&  user->userstr != '\0';
+}
 
-    //strncpy(args, str+i, len);
+void write_to_user(int user_fd, char* str){
+    send(user_fd, str, strlen(str), 0);
+}
 
-    return (char *)command;
+void handleCommand(char *comm, char *args, int user_fd){
+
+    if(!users[user_fd].valid){
+
+        if(strcmp(comm, "PASS") == 0){
+            users[user_fd].pass = (char *) malloc(strlen(args));
+            strcpy(users[user_fd].pass, args);
+
+        }
+        else if(strcmp(comm, "NICK") == 0){
+            users[user_fd].name = args;
+        }
+        else if(strcmp(comm, "USER") == 0){
+            users[user_fd].userstr = args;
+        }
+
+        if(validUser(&users[user_fd])){
+            users[user_fd].valid = true;
+            write_to_user(user_fd, "You're valid!");
+            return;
+        }
+    }
+    else{
+
+    }
+
+
 
 }
 
@@ -140,6 +166,14 @@ int main (){
                                 get_in_addr((struct sockaddr*)&their_addr),
                                 remoteIP, INET6_ADDRSTRLEN),
                             new_fd);
+
+                        user_t user;
+                        user.valid = false;
+                        user.pass = 0;
+                        user.name = 0;
+                        user.userstr = 0;
+                        users[new_fd] = user;
+
                 	}
                 	else{
                 		perror("accept new connection");
@@ -154,17 +188,19 @@ int main (){
                 	 }
                 	 else {
 
-                        char commandArgs[256];
-                        //char* comm = parseCommand(&buf, &commandArgs);
-                        char *comm;
-                        comm = parseCommand(*buf);
+                        printf("buf: %s", buf);
+                        
+                        //parseCommand puts a null terminator between the command and arguments
+                        char *commandArgs = parseCommand(buf, commandArgs);
+
+                        //we received a message!
+                        printf("command: %s\n", buf);
+                        printf("command Args: %s\n", commandArgs); 
 
 
-                        printf("command: %s", comm);
+                        handleCommand(buf, commandArgs, i);
 
 
-                	 	//we received a message!
-                	 	printf("buf: %s", buf);
                 	 	for(int j=0; j<=fdmax; ++j){
                 	 		if (FD_ISSET(j, &master)){
 	                	 		if(j != listener && j != i){
@@ -181,7 +217,7 @@ int main (){
 	return 0;	
 }
 
-bool validUser(user_t *user){
-    return strlen(user->pass) && strlen (user->name) && strlen (user->userstr);
-}
+
+
+
 
