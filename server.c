@@ -2,6 +2,20 @@
   * http://beej.us/guide/bgnet/output/html/singlepage/bgnet.html#getaddrinfo
   */
 
+/**
+    Improvements:
+    - Get closer to protocol for receiving messages
+    - the file descriptor should probably be a property of user.
+    - Handle invalid commands args better
+    - Something like the factory & policy pattern for handling commands
+    - Handle room creation
+    - Handle being in multiple rooms
+    - string utils
+    - clean up users when they leave.
+    - make file
+    - get closer to handling real client
+*/
+
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
@@ -11,6 +25,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <stdlib.h>
+#include "stringutils.h"
 
 
 //client join a server
@@ -41,29 +56,7 @@ fd_set master;    // master file descriptor list
 fd_set read_fds;  // temp file descriptor list for select()
 int fdmax;        // maximum file descriptor number
 
-bool isspace(char c){
-    return c == ' ' || c == '\n' || c == '\r' || c == '\t';
-}
 
-char* parseCommand(char *str){
-    int i =0;
-
-    char *end = str + strlen(str) - 1;
-    while(end > str && isspace((unsigned char)*end)){
-        end--;
-    } 
-    // Write new null terminator
-    *(end+1) = 0;
-
-
-    while(str[i] != '\0'){
-        if(str[i] == ' '){
-            str[i] = '\0';
-            return &str[i+1];
-        }
-        ++i;
-    }
-}
 
 bool validUser(user_t *user){
     return user->pass != '\0' && user->name != '\0' &&  user->userstr != '\0';
@@ -74,7 +67,6 @@ void write_to_user(int user_fd, char* str){
 }
 
 char* buildMessage(char *name, char *message){
-
     char *dest = (char *) malloc(strlen(name) + strlen(message) + 2 );
     snprintf(dest, 100, "%s%s%s\n", name, "> ", message);
     return dest;
